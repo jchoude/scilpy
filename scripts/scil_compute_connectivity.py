@@ -26,12 +26,14 @@ import logging
 import os
 import time
 
+from dipy.io.streamline import load_tractogram, save_tractogram
+from dipy.io.stateful_tractogram import Space
 from dipy.tracking.streamlinespeed import length
 import nibabel as nb
 import numpy as np
 
-from scilpy.io.streamlines import (load_trk_in_voxel_space,
-                                   save_from_voxel_space)
+# from scilpy.io.streamlines import (load_trk_in_voxel_space,
+#                                   save_from_voxel_space)
 from scilpy.io.utils import (add_overwrite_arg,
                              assert_inputs_exist,
                              assert_output_dirs_exist_and_empty)
@@ -83,31 +85,35 @@ def _create_required_output_dirs(out_paths, args):
         os.mkdir(out_paths['no_loops'])
         os.mkdir(out_paths['no_outliers'])
 
-
-def _save_if_needed(streamlines, args, saving_options, out_paths,
+# TODO remove unused args
+def _save_if_needed(streamlines, sft, args, saving_options, out_paths,
                     save_type, step_type, in_label, out_label):
     if saving_options[save_type] and len(streamlines):
-        save_from_voxel_space(streamlines, args.labels, args.tracks,
-                              os.path.join(out_paths[step_type],
+        sft.streamlines = streamlines
+        worked = save_tractogram(sft, os.path.join(out_paths[step_type],
                                            '{}_{}.trk'.format(in_label,
                                                               out_label)))
+        # save_from_voxel_space(streamlines, args.labels, args.tracks,
+                              #os.path.join(out_paths[step_type],
+                              #            '{}_{}.trk'.format(in_label,
+                              #                                out_label)))
 
 
 def _symmetrize_con_info(con_info):
-    final_con_info = {}
+    final_con_info={}
     for in_label in list(con_info.keys()):
         for out_label in list(con_info[in_label].keys()):
 
-            pair_info = con_info[in_label][out_label]
+            pair_info=con_info[in_label][out_label]
 
-            final_in_label = min(in_label, out_label)
-            final_out_label = max(in_label, out_label)
+            final_in_label=min(in_label, out_label)
+            final_out_label=max(in_label, out_label)
 
             if final_con_info.get(final_in_label) is None:
-                final_con_info[final_in_label] = {}
+                final_con_info[final_in_label]={}
 
             if final_con_info[final_in_label].get(final_out_label) is None:
-                final_con_info[final_in_label][final_out_label] = []
+                final_con_info[final_in_label][final_out_label]=[]
 
             final_con_info[final_in_label][final_out_label].extend(pair_info)
 
@@ -115,9 +121,9 @@ def _symmetrize_con_info(con_info):
 
 
 def _prune_segments(segments, min_length, max_length, vox_size):
-    lengths = list(length(segments) * vox_size)
-    valid = []
-    invalid = []
+    lengths=list(length(segments) * vox_size)
+    valid=[]
+    invalid=[]
 
     for s, l in zip(segments, lengths):
         if min_length <= l <= max_length:
@@ -128,42 +134,42 @@ def _prune_segments(segments, min_length, max_length, vox_size):
 
 
 def build_args_parser():
-    p = argparse.ArgumentParser(
-        formatter_class=argparse.RawTextHelpFormatter,
-        description=__doc__)
+    p=argparse.ArgumentParser(
+        formatter_class = argparse.RawTextHelpFormatter,
+        description = __doc__)
     p.add_argument('tracks',
-                   help='Path of the tracks file, in a format supported by ' +
+                   help = 'Path of the tracks file, in a format supported by ' +
                         'the Nibabel streamlines API.')
     p.add_argument('labels',
-                   help='Labels file name (nifti). Labels must be consecutive '
+                   help = 'Labels file name (nifti). Labels must be consecutive '
                         'from 0 to N, with 0 the background. '
                         'This generates a NxN connectivity matrix.')
-    p.add_argument('max_labels', type=int,
-                   help='Maximal label value that could be present in the '
+    p.add_argument('max_labels', type = int,
+                   help = 'Maximal label value that could be present in the '
                         'parcellation. Used to generate matrices with the '
                         'same size for all subjects.')
-    p.add_argument(dest='output', metavar='output_dir',
-                   help='Output directory path.')
+    p.add_argument(dest = 'output', metavar = 'output_dir',
+                   help = 'Output directory path.')
 
-    post_proc = p.add_argument_group('Post-processing options')
-    post_proc.add_argument('--no_pruning', action='store_true',
-                           help='If set, will NOT prune on length.\n'
+    post_proc=p.add_argument_group('Post-processing options')
+    post_proc.add_argument('--no_pruning', action = 'store_true',
+                           help = 'If set, will NOT prune on length.\n'
                                 'Length criteria in --min_length, '
                                 '--max_length')
-    post_proc.add_argument('--no_remove_loops', action='store_true',
-                           help='If set, will NOT remove streamlines making '
+    post_proc.add_argument('--no_remove_loops', action = 'store_true',
+                           help = 'If set, will NOT remove streamlines making '
                                 'loops.\nAngle criteria based on '
                                 '--loop_max_angle')
-    post_proc.add_argument('--no_remove_outliers', action='store_true',
-                           help='If set, will NOT remove outliers using QB.\n'
+    post_proc.add_argument('--no_remove_outliers', action = 'store_true',
+                           help = 'If set, will NOT remove outliers using QB.\n'
                                 'Criteria based on --outlier_threshold.')
-    post_proc.add_argument('--no_remove_loops_again', action='store_true',
-                           help='If set, will NOT remove streamlines that '
+    post_proc.add_argument('--no_remove_loops_again', action = 'store_true',
+                           help = 'If set, will NOT remove streamlines that '
                                 'loop according to QuickBundles.\n'
                                 'Threshold based on --loop_qb_distance.')
 
-    pr = p.add_argument_group('Pruning options')
-    pr.add_argument('--min_length', type=float, default=20.,
+    pr=p.add_argument_group('Pruning options')
+    pr.add_argument('--min_length', type = float, default = 20.,
                     help='Pruning minimal segment length. [%(default)s]')
     pr.add_argument('--max_length', type=float, default=200.,
                     help='Pruning maximal segment length. [%(default)s]')
@@ -232,7 +238,11 @@ def main():
 
     logging.info('*** Loading streamlines ***')
     time1 = time.time()
-    streamlines = load_trk_in_voxel_space(args.tracks, args.labels)
+    # streamlines = load_trk_in_voxel_space(args.tracks, args.labels)
+    sft = load_tractogram(args.tracks, args.labels,
+                          Space.VOX, shifted_origin=False)
+    # Getting a copy since sft will be used for saving.
+    streamlines = sft.get_streamlines_copy()
     time2 = time.time()
 
     logging.info('    Number of streamlines to process: {}'.format(
@@ -297,7 +307,7 @@ def main():
                                                              connection['out_idx'],
                                                              points_to_idx[strl_idx]))
 
-            _save_if_needed(final_strl, args, saving_opts, out_paths, 'raw',
+            _save_if_needed(final_strl, sft, args, saving_opts, out_paths, 'raw',
                             'raw', in_label, out_label)
 
             # Doing all post-processing
@@ -307,7 +317,7 @@ def main():
                                                             args.max_length,
                                                             vox_sizes[0])
 
-                _save_if_needed(invalid_strl, args, saving_opts, out_paths,
+                _save_if_needed(invalid_strl, sft, args, saving_opts, out_paths,
                                 'discarded', 'removed_length',
                                 in_label, out_label)
             else:
@@ -316,13 +326,13 @@ def main():
             if not len(pruned_strl):
                 continue
 
-            _save_if_needed(pruned_strl, args, saving_opts, out_paths,
+            _save_if_needed(pruned_strl, sft, args, saving_opts, out_paths,
                             'intermediate', 'pruned', in_label, out_label)
 
             if not args.no_remove_loops:
                 no_loops, loops = remove_loops_and_sharp_turns(pruned_strl,
                                                                args.loop_max_angle)
-                _save_if_needed(loops, args, saving_opts, out_paths,
+                _save_if_needed(loops, sft, args, saving_opts, out_paths,
                                 'discarded', 'loops', in_label, out_label)
             else:
                 no_loops = pruned_strl
@@ -330,13 +340,13 @@ def main():
             if not len(no_loops):
                 continue
 
-            _save_if_needed(no_loops, args, saving_opts, out_paths,
+            _save_if_needed(no_loops, sft, args, saving_opts, out_paths,
                             'intermediate', 'no_loops', in_label, out_label)
 
             if not args.no_remove_outliers:
                 no_outliers, outliers = remove_outliers(no_loops,
                                                         args.outlier_threshold)
-                _save_if_needed(outliers, args, saving_opts, out_paths,
+                _save_if_needed(outliers, sft, args, saving_opts, out_paths,
                                 'discarded', 'outliers', in_label, out_label)
             else:
                 no_outliers = no_loops
@@ -344,7 +354,7 @@ def main():
             if not len(no_outliers):
                 continue
 
-            _save_if_needed(no_outliers, args, saving_opts, out_paths,
+            _save_if_needed(no_outliers, sft, args, saving_opts, out_paths,
                             'intermediate', 'no_outliers', in_label, out_label)
 
             if not args.no_remove_loops_again:
@@ -353,12 +363,12 @@ def main():
                     args.loop_max_angle,
                     True,
                     args.loop_qb_distance)
-                _save_if_needed(loops2, args, saving_opts, out_paths,
+                _save_if_needed(loops2, sft, args, saving_opts, out_paths,
                                 'discarded', 'qb_loops', in_label, out_label)
             else:
                 no_qb_loops_strl = no_outliers
 
-            _save_if_needed(no_qb_loops_strl, args, saving_opts, out_paths,
+            _save_if_needed(no_qb_loops_strl, sft, args, saving_opts, out_paths,
                             'final', 'final', in_label, out_label)
 
             # TODO for other metrics
